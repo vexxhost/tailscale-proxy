@@ -1,12 +1,18 @@
 package endpoint
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 
 	"github.com/vexxhost/tailscale-proxy/internal/tsnet"
+	"golang.org/x/oauth2/clientcredentials"
 	"inet.af/tcpproxy"
+	"tailscale.com/client/tailscale"
 	"tailscale.com/net/netutil"
 )
 
@@ -17,11 +23,47 @@ func (ep *Endpoint) Start() {
 		advertiseTags = append(advertiseTags, fmt.Sprintf("tag:%s", tag))
 	}
 
+	authkey := os.Getenv("TS_AUTHKEY")
+	if strings.HasPrefix(authkey, "tskey-client-") {
+		tailscale.I_Acknowledge_This_API_Is_Unstable = true
+
+		baseURL := "https://api.tailscale.com"
+
+		credentials := clientcredentials.Config{
+			ClientID:     "some-client-id", // ignored
+			ClientSecret: authkey,
+			TokenURL:     baseURL + "/api/v2/oauth/token",
+		}
+
+		tsClient := tailscale.NewClient("-", nil)
+		tsClient.UserAgent = "tailscale-cli"
+		tsClient.HTTPClient = credentials.Client(context.TODO())
+		tsClient.BaseURL = baseURL
+
+		caps := tailscale.KeyCapabilities{
+			Devices: tailscale.KeyDeviceCapabilities{
+				Create: tailscale.KeyDeviceCreateCapabilities{
+					Reusable:      false,
+					Ephemeral:     true,
+					Preauthorized: true,
+					Tags:          advertiseTags,
+				},
+			},
+		}
+
+		var err error
+		authkey, _, err = tsClient.CreateKey(context.TODO(), caps)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	srv := &tsnet.Server{
 		Dir:           fmt.Sprintf("/var/lib/tailscale-proxy/%s", ep.Hostname),
 		Hostname:      ep.Hostname,
 		Ephemeral:     true,
 		AdvertiseTags: advertiseTags,
+		AuthKey:       authkey,
 	}
 
 	srv.RegisterFallbackTCPHandler(func(src, dst netip.AddrPort) (handler func(net.Conn), intercept bool) {
