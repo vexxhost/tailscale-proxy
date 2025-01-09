@@ -13,6 +13,7 @@ type ListenerType string
 
 const (
 	ListenerTypeTLS ListenerType = "tls"
+	ListenerTypeUDP ListenerType = "udp"
 )
 
 type Listener struct {

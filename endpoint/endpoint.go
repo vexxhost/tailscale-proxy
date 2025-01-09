@@ -81,7 +81,7 @@ func (ep *Endpoint) Start() {
 	})
 
 	for _, ln := range ep.Listeners {
-		ln.Start(ep.IP, srv)
+		go ln.Start(ep.IP, srv)
 	}
 }
 

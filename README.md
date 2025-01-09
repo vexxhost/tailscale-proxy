@@ -6,8 +6,14 @@ and any ports using `https` will be using the Tailscale issued certificate.
 
 ## Configuration
 
-In order to configure it, you will need to setup a configuration file such
-as the following:
+### Example
+
+In the following example, we will configure the `tailscale-proxy` to proxy
+all traffic from a device named `bmc-example-server` to the IP address
+`1.2.3.4` and will also proxy the ports `443` and `5900` using a Tailscale
+issued certificate.
+
+The device will also be tagged with `bmc` and `example` tags.
 
 ```yaml
 endpoints:
@@ -21,10 +27,33 @@ endpoints:
         type: tls
       - port: 5900
         type: tls
+      - port: 623
+        type: udp
 ```
 
-In the example above, a Tailscale device will be registered with the name
-of `bmc-example-server` and all of it's traffic will be proxied to the IP
-address `1.2.3.4`.  The tags assigned to it within Tailscale will be both
-`bmc` and `example`.  In addition, the port `443` and `5900` will be proxied
-using a Tailscale issued certificate (through LetsEncrypt).
+### Options
+
+#### `endpoints`
+
+In this section, you can configure all of the endpoints that will be proxied
+by the `tailscale-proxy`.
+
+##### `hostname`
+
+This is the hostname that will be used to register the device with Tailscale.
+
+##### `ip`
+
+This is the IP address that the device will be proxied to.
+
+##### `tags`
+
+This is a list of tags that will be assigned to the device within Tailscale.
+
+##### `listeners`
+
+This is a list of ports that will be proxied by the `tailscale-proxy`, with
+the type being any of the following:
+
+- `tls`: This will proxy the port using a Tailscale issued certificate.
+- `udp`: This will proxy UDP traffic to the target device.
