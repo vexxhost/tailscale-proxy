@@ -84,7 +84,10 @@ func (ep *Endpoint) Start() {
 		go ln.Start(ep.IP, srv)
 	}
 
-	select {}
+	go func() {
+		srv.Start()
+		defer srv.Close()
+	}()
 }
 
 func (ep *Endpoint) Close() {
