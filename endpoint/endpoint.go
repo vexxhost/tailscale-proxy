@@ -83,6 +83,8 @@ func (ep *Endpoint) Start() {
 	for _, ln := range ep.Listeners {
 		go ln.Start(ep.IP, srv)
 	}
+
+	select {}
 }
 
 func (ep *Endpoint) Close() {
