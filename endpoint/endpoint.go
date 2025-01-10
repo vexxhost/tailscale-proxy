@@ -88,11 +88,6 @@ func (ep *Endpoint) Start() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// go func() {
-	// 	srv.Start()
-	// 	defer srv.Close()
-	// }()
 }
 
 func (ep *Endpoint) Close() {
