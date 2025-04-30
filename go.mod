@@ -1,6 +1,6 @@
 module github.com/vexxhost/tailscale-proxy
 
-go 1.23.3
+go 1.24.1
 
 require (
 	golang.org/x/oauth2 v0.16.0
