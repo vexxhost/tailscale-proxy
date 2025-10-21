@@ -3,7 +3,7 @@ module github.com/vexxhost/tailscale-proxy
 go 1.24.1
 
 require (
-	golang.org/x/oauth2 v0.29.0
+	golang.org/x/oauth2 v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 	inet.af/tcpproxy v0.0.0-20231102063150-2862066fc2a9
 	tailscale.com v1.82.5
