@@ -7,13 +7,11 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"strings"
 
-	"github.com/vexxhost/tailscale-proxy/internal/tsnet"
-	"golang.org/x/oauth2/clientcredentials"
-	"inet.af/tcpproxy"
-	"tailscale.com/client/tailscale"
+	"github.com/inetaf/tcpproxy"
+	"tailscale.com/client/tailscale/v2"
 	"tailscale.com/net/netutil"
+	"tailscale.com/tsnet"
 )
 
 func (ep *Endpoint) Start() {
@@ -24,38 +22,28 @@ func (ep *Endpoint) Start() {
 	}
 
 	authkey := os.Getenv("TS_AUTHKEY")
-	if strings.HasPrefix(authkey, "tskey-client-") {
-		tailscale.I_Acknowledge_This_API_Is_Unstable = true
-
-		baseURL := "https://api.tailscale.com"
-
-		credentials := clientcredentials.Config{
-			ClientID:     "some-client-id", // ignored
-			ClientSecret: authkey,
-			TokenURL:     baseURL + "/api/v2/oauth/token",
-		}
-
-		tsClient := tailscale.NewClient("-", nil)
-		tsClient.UserAgent = "tailscale-cli"
-		tsClient.HTTPClient = credentials.Client(context.TODO())
-		tsClient.BaseURL = baseURL
-
-		caps := tailscale.KeyCapabilities{
-			Devices: tailscale.KeyDeviceCapabilities{
-				Create: tailscale.KeyDeviceCreateCapabilities{
-					Reusable:      false,
-					Ephemeral:     true,
-					Preauthorized: true,
-					Tags:          advertiseTags,
-				},
+	if os.Getenv("TS_OAUTH_CLIENT_ID") != "" {
+		client := &tailscale.Client{
+			Tailnet: os.Getenv("TS_TAILNET"),
+			Auth: &tailscale.OAuth{
+				ClientID:     os.Getenv("TS_OAUTH_CLIENT_ID"),
+				ClientSecret: os.Getenv("TS_OAUTH_CLIENT_SECRET"),
+				Scopes:       []string{"auth_keys"},
 			},
 		}
 
-		var err error
-		authkey, _, err = tsClient.CreateKey(context.TODO(), caps)
+		req := tailscale.CreateKeyRequest{}
+		req.Capabilities.Devices.Create.Reusable = false
+		req.Capabilities.Devices.Create.Ephemeral = true
+		req.Capabilities.Devices.Create.Preauthorized = true
+		req.Capabilities.Devices.Create.Tags = advertiseTags
+
+		key, err := client.Keys().CreateAuthKey(context.TODO(), req)
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		authkey = key.Key
 	}
 
 	srv := &tsnet.Server{

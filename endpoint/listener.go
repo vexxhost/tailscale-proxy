@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/vexxhost/tailscale-proxy/internal/tsnet"
+	"tailscale.com/tsnet"
 	"tailscale.com/types/nettype"
 )
 
