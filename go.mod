@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	gopkg.in/yaml.v3 v3.0.1
-	tailscale.com v1.90.4
+	tailscale.com v1.90.5
 	tailscale.com/client/tailscale/v2 v2.3.0
 )
 
