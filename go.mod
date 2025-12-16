@@ -6,7 +6,7 @@ require (
 	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	gopkg.in/yaml.v3 v3.0.1
 	tailscale.com v1.90.8
-	tailscale.com/client/tailscale/v2 v2.3.0
+	tailscale.com/client/tailscale/v2 v2.4.0
 )
 
 require (
@@ -53,7 +53,7 @@ require (
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/oauth2 v0.31.0 // indirect
+	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
