@@ -1,6 +1,6 @@
 module github.com/vexxhost/tailscale-proxy
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
