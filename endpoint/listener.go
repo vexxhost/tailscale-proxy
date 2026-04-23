@@ -3,7 +3,6 @@ package endpoint
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -82,57 +81,74 @@ func (l *Listener) startUDP(ip string, srv *tsnet.Server) {
 
 		go func(c net.Conn) {
 			defer c.Close()
-
 			packet := c.(nettype.ConnPacketConn)
-			buf := make([]byte, 1500)
-
-			for {
-				n, _, err := packet.ReadFrom(buf)
-				if err != nil {
-					log.Print(err)
-					return
-				}
-
-				if n == 0 {
-					continue
-				}
-
-				remoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip, l.Port))
-				if err != nil {
-					log.Print(err)
-					return
-				}
-
-				remoteConn, err := net.DialUDP("udp", nil, remoteAddr)
-				if err != nil {
-					log.Print(err)
-					return
-				}
-				defer remoteConn.Close()
-
-				_, err = remoteConn.Write(buf[:n])
-				if err != nil {
-					log.Print(err)
-					return
-				}
-
-				var wg sync.WaitGroup
-				wg.Add(2)
-
-				go func() {
-					defer wg.Done()
-					io.Copy(remoteConn, packet)
-				}()
-
-				go func() {
-					defer wg.Done()
-					io.Copy(packet, remoteConn)
-				}()
-
-				wg.Wait()
+			if err := forwardUDP(packet, fmt.Sprintf("%s:%d", ip, l.Port)); err != nil {
+				log.Print(err)
 			}
 		}(conn)
 	}
+}
+
+// forwardUDP proxies UDP traffic bidirectionally between a tailscale
+// PacketConn and a remote target address.
+func forwardUDP(packet nettype.ConnPacketConn, targetAddr string) error {
+	remoteAddr, err := net.ResolveUDPAddr("udp", targetAddr)
+	if err != nil {
+		return err
+	}
+
+	remoteConn, err := net.DialUDP("udp", nil, remoteAddr)
+	if err != nil {
+		return err
+	}
+	defer remoteConn.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// When one direction fails, close both connections to unblock the other.
+	closeOnce := sync.OnceFunc(func() {
+		packet.Close()
+		remoteConn.Close()
+	})
+
+	// Copy from tailscale client to remote target
+	go func() {
+		defer wg.Done()
+		defer closeOnce()
+		buf := make([]byte, 65535)
+		for {
+			n, _, err := packet.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			if n == 0 {
+				continue
+			}
+			if _, err := remoteConn.Write(buf[:n]); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Copy from remote target back to tailscale client
+	go func() {
+		defer wg.Done()
+		defer closeOnce()
+		buf := make([]byte, 65535)
+		for {
+			n, _, err := remoteConn.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			if _, err := packet.WriteTo(buf[:n], packet.RemoteAddr()); err != nil {
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	return nil
 }
 
 func (l *Listener) Start(ip string, srv *tsnet.Server) {
