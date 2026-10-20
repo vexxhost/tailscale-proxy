@@ -3,7 +3,7 @@ module github.com/vexxhost/tailscale-proxy
 go 1.26.0
 
 require (
-	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
+	github.com/inetaf/tcpproxy v0.0.0-20260515195445-c159a6051109
 	gopkg.in/yaml.v3 v3.0.1
 	tailscale.com v1.94.2
 	tailscale.com/client/tailscale/v2 v2.8.0
