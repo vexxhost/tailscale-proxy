@@ -33,9 +33,11 @@ func main() {
 		log.Fatalf("failed to decode config file: %v", err)
 	}
 
+	settings := endpoint.SettingsFromEnv()
+
 	for _, ep := range config.Endpoints {
 		go func(ep endpoint.Endpoint) {
-			ep.Start()
+			ep.Start(settings)
 		}(ep)
 
 		defer ep.Close()

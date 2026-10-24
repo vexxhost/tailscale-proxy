@@ -1,57 +1,83 @@
 package endpoint
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/netip"
-	"os"
+	"net/url"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/inetaf/tcpproxy"
-	"tailscale.com/client/tailscale/v2"
+	// Lets tsnet exchange an OAuth client secret passed as AuthKey for a
+	// single-use auth key.
+	_ "tailscale.com/feature/oauthkey"
 	"tailscale.com/net/netutil"
 	"tailscale.com/tsnet"
 )
 
-func (ep *Endpoint) Start() {
+// authKey returns the key tsnet logs in with. An OAuth client secret is
+// passed through for tsnet to exchange, with the attributes that tsnet reads
+// from it filled in from the endpoint and settings.
+func (ep *Endpoint) authKey(s Settings) (string, error) {
+	key := s.AuthKey
+
+	// Headscale issues OAuth client secrets as `hskey-client-` but tsnet
+	// only exchanges secrets starting with `tskey-client-`, and Headscale
+	// accepts both.
+	if rest, ok := strings.CutPrefix(key, "hskey-client-"); ok {
+		key = "tskey-client-" + rest
+	}
+
+	secret, query, _ := strings.Cut(key, "?")
+	if !strings.HasPrefix(secret, "tskey-client-") {
+		return key, nil
+	}
+
+	attrs, err := url.ParseQuery(query)
+	if err != nil {
+		return "", fmt.Errorf("invalid OAuth client secret attributes: %w", err)
+	}
+
+	attrs.Set("ephemeral", strconv.FormatBool(ep.ephemeral()))
+	if attrs.Get("preauthorized") == "" {
+		attrs.Set("preauthorized", "true")
+	}
+	if attrs.Get("baseURL") == "" && s.ControlURL != "" {
+		attrs.Set("baseURL", strings.TrimRight(s.ControlURL, "/"))
+	}
+
+	return secret + "?" + attrs.Encode(), nil
+}
+
+func (ep *Endpoint) server(s Settings) (*tsnet.Server, error) {
 	// NOTE(mnaser): AdvertiseTags requires that all strings are prefixed with `tag:`
 	advertiseTags := make([]string, 0, len(ep.Tags))
 	for _, tag := range ep.Tags {
 		advertiseTags = append(advertiseTags, fmt.Sprintf("tag:%s", tag))
 	}
 
-	authkey := os.Getenv("TS_AUTHKEY")
-	if os.Getenv("TS_OAUTH_CLIENT_ID") != "" {
-		client := &tailscale.Client{
-			Tailnet: os.Getenv("TS_TAILNET"),
-			Auth: &tailscale.OAuth{
-				ClientID:     os.Getenv("TS_OAUTH_CLIENT_ID"),
-				ClientSecret: os.Getenv("TS_OAUTH_CLIENT_SECRET"),
-				Scopes:       []string{"auth_keys"},
-			},
-		}
-
-		req := tailscale.CreateKeyRequest{}
-		req.Capabilities.Devices.Create.Reusable = false
-		req.Capabilities.Devices.Create.Ephemeral = true
-		req.Capabilities.Devices.Create.Preauthorized = true
-		req.Capabilities.Devices.Create.Tags = advertiseTags
-
-		key, err := client.Keys().CreateAuthKey(context.TODO(), req)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		authkey = key.Key
+	authKey, err := ep.authKey(s)
+	if err != nil {
+		return nil, err
 	}
 
-	srv := &tsnet.Server{
-		Dir:           fmt.Sprintf("/var/lib/tailscale-proxy/%s", ep.Hostname),
+	return &tsnet.Server{
+		Dir:           filepath.Join(s.StateDir, ep.Hostname),
 		Hostname:      ep.Hostname,
-		Ephemeral:     true,
+		Ephemeral:     ep.ephemeral(),
 		AdvertiseTags: advertiseTags,
-		AuthKey:       authkey,
+		AuthKey:       authKey,
+		ControlURL:    s.ControlURL,
+	}, nil
+}
+
+func (ep *Endpoint) Start(s Settings) {
+	srv, err := ep.server(s)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	srv.RegisterFallbackTCPHandler(func(src, dst netip.AddrPort) (handler func(net.Conn), intercept bool) {
@@ -72,7 +98,7 @@ func (ep *Endpoint) Start() {
 		go ln.Start(ep.IP, srv)
 	}
 
-	err := srv.Start()
+	err = srv.Start()
 	if err != nil {
 		log.Fatal(err)
 	}
