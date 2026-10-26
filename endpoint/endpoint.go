@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,9 @@ import (
 	"strings"
 
 	"github.com/inetaf/tcpproxy"
+	// Lets tsnet exchange an ID token for a federated client ID (workload
+	// identity federation) for a single-use auth key.
+	_ "tailscale.com/feature/identityfederation"
 	// Lets tsnet exchange an OAuth client secret passed as AuthKey for a
 	// single-use auth key.
 	_ "tailscale.com/feature/oauthkey"
@@ -52,6 +56,24 @@ func (ep *Endpoint) authKey(s Settings) (string, error) {
 	return secret + "?" + attrs.Encode(), nil
 }
 
+// clientID returns the federated client ID tsnet exchanges an ID token for,
+// with the attributes tsnet reads from it set from the endpoint.
+func (ep *Endpoint) clientID(s Settings) (string, error) {
+	id, query, _ := strings.Cut(s.ClientID, "?")
+
+	attrs, err := url.ParseQuery(query)
+	if err != nil {
+		return "", fmt.Errorf("invalid federated client ID attributes: %w", err)
+	}
+
+	attrs.Set("ephemeral", strconv.FormatBool(ep.ephemeral()))
+	if attrs.Get("preauthorized") == "" {
+		attrs.Set("preauthorized", "true")
+	}
+
+	return id + "?" + attrs.Encode(), nil
+}
+
 func (ep *Endpoint) server(s Settings) (*tsnet.Server, error) {
 	// NOTE(mnaser): AdvertiseTags requires that all strings are prefixed with `tag:`
 	advertiseTags := make([]string, 0, len(ep.Tags))
@@ -59,19 +81,46 @@ func (ep *Endpoint) server(s Settings) (*tsnet.Server, error) {
 		advertiseTags = append(advertiseTags, fmt.Sprintf("tag:%s", tag))
 	}
 
-	authKey, err := ep.authKey(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tsnet.Server{
+	srv := &tsnet.Server{
 		Dir:           filepath.Join(s.StateDir, ep.Hostname),
 		Hostname:      ep.Hostname,
 		Ephemeral:     ep.ephemeral(),
 		AdvertiseTags: advertiseTags,
-		AuthKey:       authKey,
 		ControlURL:    s.ControlURL,
-	}, nil
+	}
+
+	if s.ClientID == "" {
+		authKey, err := ep.authKey(s)
+		if err != nil {
+			return nil, err
+		}
+
+		srv.AuthKey = authKey
+
+		return srv, nil
+	}
+
+	// tsnet resolves credentials on every start, even with saved state, so
+	// this runs for every endpoint; the token source hands them all one token.
+	clientID, err := ep.clientID(s)
+	if err != nil {
+		return nil, err
+	}
+
+	audience, err := s.audience()
+	if err != nil {
+		return nil, err
+	}
+
+	idToken, err := s.IDToken(context.Background(), audience)
+	if err != nil {
+		return nil, err
+	}
+
+	srv.ClientID = clientID
+	srv.IDToken = idToken
+
+	return srv, nil
 }
 
 func (ep *Endpoint) Start(s Settings) {

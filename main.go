@@ -34,6 +34,9 @@ func main() {
 	}
 
 	settings := endpoint.SettingsFromEnv()
+	if err := settings.Validate(); err != nil {
+		log.Fatalf("invalid settings: %v", err)
+	}
 
 	for _, ep := range config.Endpoints {
 		go func(ep endpoint.Endpoint) {

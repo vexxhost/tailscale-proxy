@@ -73,6 +73,19 @@ which control server they register with:
 - `TS_OAUTH_CLIENT_SECRET`: An OAuth client secret with the `auth_keys` scope,
   used instead of `TS_AUTHKEY` when set. A single-use, pre-authorized auth key
   carrying the device tags is created for each device.
+- `TS_FEDERATED_CLIENT_ID`: A federated identity (workload identity
+  federation) with the `auth_keys` scope, used instead of `TS_AUTHKEY` and
+  `TS_OAUTH_CLIENT_SECRET`, which must then be unset. The proxy asks the
+  `tailscaled` running on the same host for an ID token about its own node
+  (`tailscale id-token`), and exchanges it for a single-use, pre-authorized
+  auth key carrying the device tags. No secret is stored. Requires a control
+  server that issues ID tokens to nodes, such as Headscale from
+  `vexxhost/headscale`.
+- `TS_FEDERATED_AUDIENCE`: The audience of that ID token. When unset, it is
+  `<TS_CONTROL_URL host>/<TS_FEDERATED_CLIENT_ID>`, Headscale's default for a
+  federated identity.
+- `TS_TAILSCALED_SOCKET`: The `tailscaled` socket to ask for ID tokens. When
+  unset, the platform default is used.
 - `TS_CONTROL_URL`: The control server to register with, for example a
   Headscale server. When unset, the Tailscale control server is used.
 
@@ -95,3 +108,27 @@ The OAuth client secret can be used as Headscale prints it, and auth keys are
 created using the API of the server in `TS_CONTROL_URL`. Every device tag must
 be listed in `tagOwners` in the Headscale policy and be one of the tags of the
 OAuth client, or be owned by one of them.
+
+#### Without a secret
+
+When the host running the proxy is itself a tailnet node, the devices can be
+registered with its node identity instead of a secret. Create a federated
+identity that trusts Headscale as issuer and accepts the host's tags, and
+give it the device tags (or tags that own them):
+
+```shell
+headscale federated-identities create \
+  --issuer https://headscale.example.com \
+  --subject '*' --claim 'tags=*:tag:bastion' \
+  --scope auth_keys --tag tag:bmc --tag tag:example
+```
+
+```shell
+export TS_CONTROL_URL=https://headscale.example.com
+export TS_FEDERATED_CLIENT_ID=<client id>
+```
+
+The proxy runs as root, so it may ask `tailscaled` for ID tokens. One token
+serves every device while it stays valid, and the proxy retries for two
+minutes while `tailscaled` is not ready yet, such as right after boot.
+
